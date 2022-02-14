@@ -194,7 +194,7 @@ class Durability:
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
-            self.consistency_matrix([1], [1])
+            self.main(3, 5, 1)
 
     ################################################################
     #
