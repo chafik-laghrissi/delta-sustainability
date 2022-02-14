@@ -202,17 +202,16 @@ class Durability:
     #
     ################################################################
 
-    def consistency_matrix(self, comparison_weights, weights):
-        comparison_weights = [3, 5, 1]
-        weights = [0.6554865424, 0.1867494824, 0.1577639752]
+    def consistency_matrix(self, comparison, weights):
+        # comparison_weights = [3, 5, 1]
+        # weights = [0.6554865424, 0.1867494824, 0.1577639752]
+        # comparison = [
+        #     [1, comparison_weights[0], comparison_weights[1]],
+        #     [1 / comparison_weights[0], 1, comparison_weights[2]],
+        #     [1 / comparison_weights[1], 1 / comparison_weights[2], 1],
+        # ]
 
         sp_normalise = list()
-
-        comparison = [
-            [1, comparison_weights[0], comparison_weights[1]],
-            [1 / comparison_weights[0], 1, comparison_weights[2]],
-            [1 / comparison_weights[1], 1 / comparison_weights[2], 1],
-        ]
         rows, cols = (len(comparison), len(comparison[0]))
 
         # calculate comparison matrix
@@ -223,6 +222,7 @@ class Durability:
                 comparison[i][j] = comparison[i][j] * weights[j]
 
             row_sum = sum(comparison[i])
+            print(row_sum, weights[i])
             normalized_sp = row_sum / weights[i]
 
             comparison[i] += [row_sum, normalized_sp]
@@ -232,10 +232,10 @@ class Durability:
         lambda_max = self.lambda_max(sp_normalise)
 
         # calculate consistency index and ratio
-        concistency_index, consistency_ratio = self.consistency_index(
+        consistency_index, consistency_ratio = self.consistency_index(
             len(weights), lambda_max)
 
-        print(concistency_index, consistency_ratio)
+        return comparison, lambda_max, consistency_index, consistency_ratio
 
     def lambda_max(self, sp_normalise):
         return sum(sp_normalise) / len(sp_normalise)
@@ -248,3 +248,35 @@ class Durability:
 
     def isConsistent(self, consistency_ratio):
         return consistency_ratio < 0.1
+
+    def pair_wise_matrix_gen(self, a_b: float, a_c: float, b_c: float) -> list:
+        return [[1, a_b, a_c], [1/a_b, 1, b_c], [1/a_c, 1/b_c, 1]]
+
+    def weight_cal(self, pair_wise_matrix: list) -> list:
+        s1 = []
+        s2 = []
+        s3 = []
+        for nm in pair_wise_matrix:
+            s1.append(nm[0])
+            s2.append(nm[1])
+            s3.append(nm[2])
+        s = [sum(s1), sum(s2), sum(s3)]
+        tmp_list = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        for index1, i in enumerate(pair_wise_matrix):
+            for index2, j in enumerate(i):
+                tmp_list[index1][index2] = j/s[index2]
+        for index, i in enumerate(tmp_list):
+            s[index] = sum(i)/len(i)
+        return s
+
+    def main(self, f1, f2, f3):
+        pair_wise_matrix = self.pair_wise_matrix_gen(f1, f2, f3)
+
+        weights = self.weight_cal(pair_wise_matrix)
+
+        comparison, lambda_max, consistency_index, consistency_ratio = self.consistency_matrix(
+            pair_wise_matrix, weights)
+
+        is_consistent = self.isConsistent(consistency_ratio)
+
+        # OUTPUT TO UI OR WHATEVER YOU WANT
