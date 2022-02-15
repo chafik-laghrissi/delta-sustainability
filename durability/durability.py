@@ -21,7 +21,6 @@
  *                                                                         *
  ***************************************************************************/
 """
-from typing import Dict
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
@@ -67,6 +66,10 @@ class Durability:
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
+
+        self._env_factor = 1
+        self._eco_factor = 1
+        self._soc_factor = 1
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -187,15 +190,91 @@ class Durability:
             self.first_start = False
             self.dlg = DurabilityDialog()
 
+        self.dlg.fact_eco_slider.valueChanged.connect(self.set_eco_factor)
+        self.dlg.fact_social_slider.valueChanged.connect(
+            self.set_social_factor)
+        self.dlg.fact_env_slider.valueChanged.connect(self.set_env_factor)
+        self.dlg.result_button.clicked.connect(self.show_result)
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
         # See if OK was pressed
+
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
-            print(self.main(3, 5, 1,{'ec':[500,555,1050,762],'en':[950,600,706,48],'so':[69,67,50,53]},[1,1,1]))
+            print(self.ahp())
+
+    ################################################################
+    #
+    # Frontend
+    #
+    ################################################################
+
+    def show_result(self):
+        result = False
+        try:
+            result = self.ahp()
+        except Exception as e:
+            print("ERROOOOOOOOR :-> ", e)
+        if result:
+            self.dlg.result_label.setText("Durable 30%")
+        else:
+            self.dlg.result_label.setText("Non durable")
+
+    def set_eco_factor(self, value):
+        self.dlg.fact_eco_number.setText(str(value))
+        self._eco_factor = value
+        print(self._eco_factor)
+
+    def set_social_factor(self, value):
+        self.dlg.fact_social_number.setText(str(value))
+        self._soc_factor = value
+        print(self._soc_factor)
+
+    def set_env_factor(self, value):
+        self.dlg.fact_env_number.setText(str(value))
+        self._env_factor = value
+        print(self._env_factor)
+
+    def parse_value(self, lineEditsTuple):
+        return (float(lineEditsTuple[0].text()), float(lineEditsTuple[1].text()))
+
+    def get_values_seuils(self):
+        result = {
+            "values": {
+                "ec": [
+                    float(self.dlg.s1_eco_infra_vb.text()),
+                    float(self.dlg.s1_eco_ca_vb.text()),
+                    float(self.dlg.s1_eco_tourist_vb.text()),
+                    float(self.dlg.s1_eco_personnes_vb.text()),
+                ],
+
+                "en": [
+                    float(self.dlg.s1_env_eco_vb.text()),
+                    float(self.dlg.s1_env_bio_vb.text()),
+                    float(self.dlg.s1_env_paysage_vb.text()),
+                    float(self.dlg.s1_env_climat_vb.text()),
+                ],
+
+                "so": [
+                    float(self.dlg.s1_social_hosp_vb.text()),
+                    float(self.dlg.s1_social_sec_vb.text()),
+                    float(self.dlg.s1_social_cotumes_vb.text()),
+                    float(self.dlg.s1_social_crimes_vb.text()),
+                ]
+            },
+            "factors": [self._soc_factor, self._eco_factor, self._env_factor],
+            "threshold": [
+                float(self.dlg.s1_social_seuil.text()),
+                float(self.dlg.s1_eco_seuil.text()),
+                float(self.dlg.s1_env_seuil.text()),
+            ]
+        }
+
+        print(result)
+        return result
 
     ################################################################
     #
@@ -205,6 +284,7 @@ class Durability:
 
     NORMES = {"Eco": [400, 500, 1000, 700], "Env": [
         900, 600, 700, 40], "Soc": [68, 60, 50, 50]}
+
     def consistency_matrix(self, comparison, weights):
         # comparison_weights = [3, 5, 1]
         # weights = [0.6554865424, 0.1867494824, 0.1577639752]
@@ -272,7 +352,6 @@ class Durability:
             s[index] = sum(i)/len(i)
         return s
 
-
     def normalizer(self, vb, composante):
         norme_comp = []
         values = []
@@ -287,23 +366,22 @@ class Durability:
             values.append(vb[i]/norme_comp[i])
         return sum(values)
 
-    def calculate_values(self, brute_values:Dict[str,list]):
-        values=[]
+    def calculate_values(self, brute_values):
+        values = []
         for v in brute_values.keys():
-            normalized_value=self.normalizer(brute_values[v],v)
+            normalized_value = self.normalizer(brute_values[v], v)
             values.append(normalized_value)
         return values
 
-    def durability(self, values:list, weights,threshold:list)->bool:
-        tmp=[]
-        for index,v in enumerate(values):
+    def durability(self, values: list, weights, threshold: list) -> bool:
+        tmp = []
+        for index, v in enumerate(values):
             tmp.append(v*weights[index])
-        return sum(tmp)>=sum(threshold)
+        return sum(tmp) >= sum(threshold)
 
-        
-
-    def main(self, f1:int, f2:int, f3:int,values:Dict[str,list],threshold:list):
-        pair_wise_matrix = self.pair_wise_matrix_gen(f1, f2, f3)
+    def ahp(self):
+        pair_wise_matrix = self.pair_wise_matrix_gen(
+            self._env_factor, self._eco_factor, self._soc_factor)
 
         weights = self.weight_cal(pair_wise_matrix)
 
@@ -311,8 +389,12 @@ class Durability:
             pair_wise_matrix, weights)
 
         is_consistent = self.isConsistent(consistency_ratio)
+
         if(not is_consistent):
-            return {"error":f'factores are not concistent {consistency_ratio}'}
-        normalized_values=self.calculate_values(values)
-        return self.durability(normalized_values,weights,threshold)
+            return {"error": f'factores are not concistent {consistency_ratio}'}
+
+        values_threshold = self.get_values_seuils()
+        normalized_values = self.calculate_values(values_threshold["values"])
+        print(consistency_ratio)
+        return self.durability(normalized_values, weights, values_threshold["threshold"])
         # OUTPUT TO UI OR WHATEVER YOU WANT
