@@ -21,6 +21,7 @@
  *                                                                         *
  ***************************************************************************/
 """
+from typing import Dict
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
@@ -194,7 +195,7 @@ class Durability:
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
-            self.main(3, 5, 1)
+            print(self.main(3, 5, 1,{'ec':[500,555,1050,762],'en':[950,600,706,48],'so':[69,67,50,53]},[1,1,1]))
 
     ################################################################
     #
@@ -202,6 +203,8 @@ class Durability:
     #
     ################################################################
 
+    NORMES = {"Eco": [400, 500, 1000, 700], "Env": [
+        900, 600, 700, 40], "Soc": [68, 60, 50, 50]}
     def consistency_matrix(self, comparison, weights):
         # comparison_weights = [3, 5, 1]
         # weights = [0.6554865424, 0.1867494824, 0.1577639752]
@@ -268,46 +271,38 @@ class Durability:
         for index, i in enumerate(tmp_list):
             s[index] = sum(i)/len(i)
         return s
-    normes = {"Eco": [400, 500, 1000, 700], "Env": [
-        900, 600, 700, 40], "Soc": [68, 60, 50, 50]}
 
-    # Calcule des indicateurs
-    def calculIndice(self, vb, composante):
+
+    def normalizer(self, vb, composante):
         norme_comp = []
-        indices = []
+        values = []
         if composante == 'ec':
-            norme_comp = self.normes['Eco']
+            norme_comp = self.NORMES['Eco']
         elif composante == 'en':
-            norme_comp = self.normes['Env']
+            norme_comp = self.NORMES['Env']
         elif composante == 'so':
-            norme_comp = self.normes['Soc']
+            norme_comp = self.NORMES['Soc']
 
         for i in range(0, len(vb)):
-            indices.append(vb[i]/norme_comp[i])
-        return indices
+            values.append(vb[i]/norme_comp[i])
+        return sum(values)
 
-    def calculeValeur(self, ind, fact):
-        val = []
-        for i in range(0, len(ind)):
-            val.append(round((ind/fact), 2))
-        return val
+    def calculate_values(self, brute_values:Dict[str,list]):
+        values=[]
+        for v in brute_values.keys():
+            normalized_value=self.normalizer(brute_values[v],v)
+            values.append(normalized_value)
+        return values
 
-    def durabilite(self, valeur, seuil):
-        vals = 0
-        seuils = 0
-        durabilite = 0
-        d = 0
-        for i in range(0, len(valeur)):
-            vals += valeur[i]
-            seuils += seuil[i]
-        val_moy = vals/4
-        sum_seuils = seuils/4
-        if val_moy > sum_seuils:
-            durabilite = 1
+    def durability(self, values:list, weights,threshold:list)->bool:
+        tmp=[]
+        for index,v in enumerate(values):
+            tmp.append(v*weights[index])
+        return sum(tmp)>=sum(threshold)
 
-        return {"valeur_moyenne": val_moy, "somme_seuils": sum_seuils, "durabilité": durabilite}
+        
 
-    def main(self, f1, f2, f3):
+    def main(self, f1:int, f2:int, f3:int,values:Dict[str,list],threshold:list):
         pair_wise_matrix = self.pair_wise_matrix_gen(f1, f2, f3)
 
         weights = self.weight_cal(pair_wise_matrix)
@@ -316,5 +311,8 @@ class Durability:
             pair_wise_matrix, weights)
 
         is_consistent = self.isConsistent(consistency_ratio)
-
+        if(not is_consistent):
+            return {"error":f'factores are not concistent {consistency_ratio}'}
+        normalized_values=self.calculate_values(values)
+        return self.durability(normalized_values,weights,threshold)
         # OUTPUT TO UI OR WHATEVER YOU WANT
